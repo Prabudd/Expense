@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Expense Tracker</title>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        #closestDates {
+            border: 2px solid #007bff;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #e0f7fa;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+    </style>
+    <script>
+        function saveEntry() {
+            const dueDate = document.getElementById("dueDate").value;
+            const type = document.getElementById("type").value;
+            const amount = document.getElementById("amount").value;
+
+            if (!dueDate || !type || !amount) {
+                alert("Please fill in all fields.");
+                return;
+            }
+
+            let data = JSON.parse(localStorage.getItem("expenseData")) || [];
+            data.push({ dueDate: dueDate, type: type, amount: amount });
+            localStorage.setItem("expenseData", JSON.stringify(data));
+
+            displayData();
+            clearInputs();
+        }
+
+        function displayData() {
+            let data = JSON.parse(localStorage.getItem("expenseData")) || [];
+
+            const dataTable = document.getElementById("dataTable");
+            dataTable.innerHTML = "";
+
+            if (data.length === 0) {
+                dataTable.innerHTML = "<p>No data available.</p>";
+                return;
+            }
+
+            let tableHTML = "<table><thead><tr><th>Due Date</th><th>Type</th><th>Amount</th><th>Actions</th></tr></thead><tbody>";
+            data.forEach((item, index) => {
+                tableHTML += `<tr><td>${item.dueDate}</td><td>${item.type}</td><td>${item.amount}</td><td><button onclick="deleteRow(${index})">Delete</button> <button onclick="editRow(${index})">Edit</button></td></tr>`;
+            });
+            tableHTML += "</tbody></table>";
+            dataTable.innerHTML = tableHTML;
+            displayClosestDueDates(data);
+        }
+
+        function downloadExcel() {
+            let data = JSON.parse(localStorage.getItem("expenseData")) || [];
+            if (data.length === 0) {
+                alert("No data to download.");
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+            const wsData = [["Due Date", "Type", "Amount"]];
+
+            data.forEach(item => {
+                wsData.push([item.dueDate, item.type, item.amount]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+
+            const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+            const blob = new Blob([new Uint8Array(wbout)], { type: "application/octet-stream" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "expenses.xlsx";
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function clearInputs() {
+            document.getElementById("dueDate").value = "";
+            document.getElementById("type").value = "Cheque";
+            document.getElementById("amount").value = "";
+        }
+
+        function deleteRow(index) {
+            let data = JSON.parse(localStorage.getItem("expenseData")) || [];
+            data.splice(index, 1);
+            localStorage.setItem("expenseData", JSON.stringify(data));
+            displayData();
+        }
+
+        function editRow(index) {
+            let data = JSON.parse(localStorage.getItem("expenseData")) || [];
+            document.getElementById("dueDate").value = data[index].dueDate;
+            document.getElementById("type").value = data[index].type;
+            document.getElementById("amount").value = data[index].amount;
+            data.splice(index, 1);
+            localStorage.setItem("expenseData", JSON.stringify(data));
+            displayData();
+        }
+
+        function deleteAll() {
+            localStorage.removeItem("expenseData");
+            displayData();
+        }
+
+        function displayClosestDueDates(data) {
+            data.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+            const closestDates = data.slice(0, 3);
+            let displayString = "";
+
+            closestDates.forEach(item => {
+                displayString += `Due Date: ${item.dueDate}, Type: ${item.type}, Amount: ${item.amount}<br>`;
+            });
+
+            document.getElementById("closestDates").innerHTML = displayString;
+        }
+
+        function onloadFunction(){
+            displayData();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                if (file.name.endsWith(".xlsx")) {
+                    importFromExcel(e.target.result);
+                } else if (file.name.endsWith(".txt")) {
+                    importFromText(e.target.result);
+                } else {
+                    alert("Unsupported file type. Please use .xlsx or .txt.");
+                }
+            };
+
+            if (file.name.endsWith(".xlsx")) {
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.readAsText(file);
+            }
+        }
+
+        function importFromExcel(data) {
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+            let existingData = JSON.parse(localStorage.getItem("expenseData")) || [];
+            localStorage.setItem("expenseData", JSON.stringify(existingData.concat(jsonData)));
+            displayData();
+        }
+
+        function importFromText(text) {
+            const lines = text.split('\n');
+            const importedData = [];
+
+            lines.forEach(line => {
+                const values = line.split(',');
+                if (values.length === 3) {
+                    importedData.push({
+                        dueDate: values[0].trim(),
+                        type: values[1].trim(),
+                        amount: parseFloat(values[2].trim())
+                    });
+                }
+            });
+
+            let existingData = JSON.parse(localStorage.getItem("expenseData")) || [];
+            localStorage.setItem("expenseData", JSON.stringify(existingData.concat(importedData)));
+            displayData();
+        }
+    </script>
+</head>
+<body onload="onloadFunction()">
+    <h2>Expense Tracker</h2>
+    <label for="dueDate">Due Date:</label>
+    <input type="date" id="dueDate"><br><br>
+
+    <label for="type">Type:</label>
+    <select id="type">
+        <option value="Cheque">Cheque</option>
+        <option value="Note">Note</option>
+    </select><br><br>
+
+    <label for="amount">Amount:</label>
+    <input type="number" id="amount"><br><br>
+
+    <button onclick="saveEntry()">Save</button>
+    <button onclick="clearInputs()">Clear</button>
+    <button onclick="downloadExcel()">Download XLSX</button>
+    <button onclick="deleteAll()">Delete All</button><br><br>
+
+    <label>Import Data:</label>
+    <input type="file" id="importFile" onchange="importData(event)"><br><br>
+
+    <div id="closestDates"></div>
+
+    <h3>Data View:</h3>
+    <div id="dataTable"></div>
+</body>
+</html>
